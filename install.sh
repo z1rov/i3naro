@@ -432,11 +432,6 @@ setup_services() {
   sudo systemctl start NetworkManager
   ok "NetworkManager habilitado"
 
-  if pacman -Qi i3-wm &>/dev/null; then
-    warn "Removiendo i3-wm (conflicto con i3-gaps)..."
-    sudo pacman -Rns --noconfirm i3-wm || true
-  fi
-
   local active_dm
   active_dm="$(detect_display_manager)"
 
