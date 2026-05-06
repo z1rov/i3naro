@@ -1,8 +1,7 @@
 #!/usr/bin/env bash
 # ================================================================
-#   i3naro + bspwm — Unified Modular Installer
+#   i3naro — Installer
 #   Repo: https://github.com/z1rov/i3naro
-#   Based on: z1rov/i3naro  &  envertex/dotfiles
 # ================================================================
 set -Eeuo pipefail
 
@@ -10,9 +9,9 @@ set -Eeuo pipefail
 # GLOBALS
 # ================================================================
 USER_NAME="${SUDO_USER:-$USER}"
-DOTFILES_I3="https://github.com/z1rov/i3naro"
-DOTFILES_BSPWM="https://github.com/envertex/dotfiles"
-TMPDIR_PREFIX="/tmp/dotfiles_install_$$"
+DOTFILES_REPO="https://github.com/z1rov/i3naro"
+TMPDIR_CLONE="/tmp/i3naro_install_$$"
+SUDO_KEEPALIVE_PID=""
 
 # ================================================================
 # COLORS
@@ -25,28 +24,28 @@ BOLD='\033[1m'
 RESET='\033[0m'
 
 # ================================================================
-# UI HELPERS
+# UI
 # ================================================================
 banner() {
   clear
   echo -e "${CYAN}"
-  cat <<'EOF'
+  cat <<'BANNER'
+
   ██╗██████╗ ███╗   ██╗ █████╗ ██████╗  ██████╗
   ██║╚════██╗████╗  ██║██╔══██╗██╔══██╗██╔═══██╗
   ██║ █████╔╝██╔██╗ ██║███████║██████╔╝██║   ██║
   ██║ ╚═══██╗██║╚██╗██║██╔══██║██╔══██╗██║   ██║
   ██║██████╔╝██║ ╚████║██║  ██║██║  ██║╚██████╔╝
   ╚═╝╚═════╝ ╚═╝  ╚═══╝╚═╝  ╚═╝╚═╝  ╚═╝ ╚═════╝
-EOF
-  echo -e "${RESET}"
-  echo -e "  ${BOLD}i3wm + bspwm — Unified Modular Installer${RESET}"
-  echo -e "  ${YELLOW}https://github.com/z1rov/i3naro${RESET}\n"
-  echo -e "  $(printf '─%.0s' {1..50})\n"
+
+BANNER
+  echo -e "${RESET}  ${BOLD}i3wm Modular Installer${RESET}  —  ${YELLOW}https://github.com/z1rov/i3naro${RESET}"
+  echo -e "  $(printf '─%.0s' {1..52})\n"
 }
 
 step() {
   echo -e "\n${CYAN}[➜]${RESET} ${BOLD}$1${RESET}"
-  echo -e "  $(printf '─%.0s' {1..40})"
+  echo -e "  $(printf '─%.0s' {1..42})"
 }
 
 ok()   { echo -e "  ${GREEN}[✔]${RESET} $1"; }
@@ -55,10 +54,18 @@ err()  { echo -e "  ${RED}[✗]${RESET} $1"; }
 info() { echo -e "  ${CYAN}[i]${RESET} $1"; }
 
 # ================================================================
-# TRAIN ANIMATION (del install.sh original — se mantiene)
+# TRAIN ANIMATION
 # ================================================================
 run_train() {
-  local smoke_frames=( "   (   )" "   (    )" "   (     )" "   (    )" "   (   )" "   ." "    " )
+  local smoke_frames=(
+    "   (   )"
+    "   (    )"
+    "   (     )"
+    "   (    )"
+    "   (   )"
+    "   ."
+    "    "
+  )
 
   _print_train() {
     clear
@@ -76,12 +83,12 @@ ${space} "\`-0-0-'"\`-0-0-'"\`-0-0-'"\`-0-0-'"\`-0-0-'"\`-0-0-'
 EOF
   }
 
-  for i in {0..20}; do
-    _print_train "$i" $((i % ${#smoke_frames[@]}))
+  for i in {0..22}; do
+    _print_train "$i" $(( i % ${#smoke_frames[@]} ))
     sleep 0.08
   done
-  for ((i=20; i>=0; i--)); do
-    _print_train "$i" $((i % ${#smoke_frames[@]}))
+  for (( i=22; i>=0; i-- )); do
+    _print_train "$i" $(( i % ${#smoke_frames[@]} ))
     sleep 0.08
   done
   clear
@@ -90,29 +97,28 @@ EOF
 # ================================================================
 # CHECKS
 # ================================================================
-[[ $EUID -eq 0 ]] && {
-  echo -e "${RED}[!] No ejecutes como root.${RESET}"
-  exit 1
+check_root() {
+  [[ $EUID -eq 0 ]] && {
+    err "No ejecutes como root. Usa tu usuario normal."
+    exit 1
+  }
 }
 
-command -v pacman &>/dev/null || {
-  echo -e "${RED}[!] Este script es solo para Arch Linux.${RESET}"
-  exit 1
+check_arch() {
+  command -v pacman &>/dev/null || {
+    err "Este instalador es solo para Arch Linux."
+    exit 1
+  }
 }
 
 # ================================================================
-# MODO DE INSTALACIÓN
+# CLEANUP TRAP
 # ================================================================
-choose_mode() {
-  banner
-  echo -e "  Elige qué instalar:\n"
-  echo -e "   ${BOLD}1)${RESET} i3wm  — i3-gaps + Polybar + LightDM  ${CYAN}(i3naro)${RESET}"
-  echo -e "   ${BOLD}2)${RESET} bspwm — bspwm + sxhkd + lxdm         ${CYAN}(envertex)${RESET}"
-  echo -e "   ${BOLD}3)${RESET} Ambos\n"
-  read -rp "  Opción [1/2/3]: " MODE
-  MODE="${MODE:-1}"
-  [[ "$MODE" =~ ^[123]$ ]] || { err "Opción inválida."; exit 1; }
+_cleanup() {
+  [[ -n "$SUDO_KEEPALIVE_PID" ]] && kill "$SUDO_KEEPALIVE_PID" 2>/dev/null || true
+  rm -rf "$TMPDIR_CLONE" 2>/dev/null || true
 }
+trap '_cleanup' EXIT INT TERM
 
 # ================================================================
 # SUDO
@@ -120,21 +126,25 @@ choose_mode() {
 setup_sudo_cache() {
   step "Cacheando credenciales sudo"
   sudo -v
-  # Keep sudo alive during install
-  while true; do sudo -n true; sleep 50; kill -0 "$$" || exit; done 2>/dev/null &
-  SUDO_KEEP_PID=$!
-  trap 'kill $SUDO_KEEP_PID 2>/dev/null' EXIT
+  # Keepalive en background
+  while true; do
+    sudo -n true
+    sleep 50
+    kill -0 "$$" 2>/dev/null || exit
+  done &
+  SUDO_KEEPALIVE_PID=$!
+  ok "sudo cacheado"
 }
 
 setup_sudo_nopasswd() {
-  local SUDO_FILE="/etc/sudoers.d/99_${USER_NAME}"
+  local sudofile="/etc/sudoers.d/99_${USER_NAME}"
   step "Configurando sudo NOPASSWD"
 
-  sudo sh -c "echo '${USER_NAME} ALL=(ALL) NOPASSWD: ALL' > '${SUDO_FILE}'"
-  sudo chmod 440 "$SUDO_FILE"
-  sudo visudo -cf "$SUDO_FILE" || {
-    sudo rm -f "$SUDO_FILE"
-    err "Sudoers file inválido — revertido"
+  sudo sh -c "echo '${USER_NAME} ALL=(ALL) NOPASSWD: ALL' > '${sudofile}'"
+  sudo chmod 440 "$sudofile"
+  sudo visudo -cf "$sudofile" || {
+    sudo rm -f "$sudofile"
+    err "sudoers inválido — revertido"
     exit 1
   }
   ok "sudo NOPASSWD configurado"
@@ -163,8 +173,60 @@ setup_yay() {
 }
 
 # ================================================================
-# INSTALADORES DE PAQUETES
+# DETECTAR DISPLAY MANAGER ACTIVO
 # ================================================================
+detect_display_manager() {
+  local dm_list=("gdm" "sddm" "lightdm" "ly" "lxdm" "slim" "xdm" "greetd" "emptty")
+  for dm in "${dm_list[@]}"; do
+    if systemctl is-enabled "$dm" &>/dev/null; then
+      echo "$dm"
+      return 0
+    fi
+  done
+  echo ""
+}
+
+# ================================================================
+# PAQUETES
+# ================================================================
+PACMAN_PKGS=(
+  # Xorg
+  xorg xorg-xinit
+  # WM + compositor
+  i3-gaps picom
+  # Bar
+  polybar
+  # Terminales
+  kitty alacritty
+  # Shell + tmux
+  zsh tmux
+  # Editor
+  neovim
+  # Launcher + file manager
+  rofi thunar gvfs
+  # Utilidades
+  bat eza xclip feh
+  brightnessctl pamixer
+  flameshot
+  # Red
+  networkmanager
+  # Browser
+  firefox
+  # Audio
+  pipewire pipewire-pulse wireplumber
+  # Temas + iconos
+  papirus-icon-theme gnome-themes-extra
+  # Notificaciones
+  dunst
+  # Node (scripts polybar)
+  nodejs npm
+  # Fuentes sistema
+  terminus-font
+  ttf-nerd-fonts-symbols ttf-nerd-fonts-symbols-mono
+  ttf-hack-nerd ttf-jetbrains-mono-nerd
+  ttf-font-awesome
+)
+
 install_pacman() {
   for pkg in "$@"; do
     if pacman -Qi "$pkg" &>/dev/null; then
@@ -179,7 +241,7 @@ install_pacman() {
 
 install_yay_pkgs() {
   if ! command -v yay &>/dev/null; then
-    warn "yay no disponible — omitiendo paquetes AUR"
+    warn "yay no disponible — omitiendo AUR"
     return
   fi
   for pkg in "$@"; do
@@ -188,63 +250,16 @@ install_yay_pkgs() {
     else
       step "Instalando AUR: $pkg"
       yay -S --needed --noconfirm "$pkg"
-      ok "$pkg (AUR)"
+      ok "$pkg"
     fi
   done
 }
 
 # ================================================================
-# PAQUETES — I3NARO
+# ZSH + OH-MY-ZSH + POWERLEVEL10K
 # ================================================================
-I3_PACMAN_PKGS=(
-  xorg xorg-xinit
-  i3-gaps
-  lightdm lightdm-gtk-greeter
-  polybar
-  alacritty
-  zsh
-  rofi feh nano
-  flameshot xclip
-  networkmanager
-  neovim tmux
-  bat eza
-  pipewire pipewire-pulse wireplumber
-  dunst
-  nodejs npm
-  terminus-font
-  ttf-nerd-fonts-symbols ttf-nerd-fonts-symbols-mono
-  ttf-hack-nerd ttf-jetbrains-mono-nerd
-  ttf-font-awesome
-)
-
-# ================================================================
-# PAQUETES — BSPWM
-# ================================================================
-BSPWM_PACMAN_PKGS=(
-  xorg xorg-xinit
-  bspwm sxhkd
-  picom feh
-  lxdm
-  kitty zsh tmux neovim
-  rofi thunar gvfs
-  bat eza xclip
-  brightnessctl pamixer
-  firefox
-  pipewire pipewire-pulse wireplumber
-  papirus-icon-theme
-  dunst flameshot
-  gnome-themes-extra
-  linux linux-firmware mesa xf86-video-amdgpu
-  polybar nodejs npm
-)
-
-BSPWM_AUR_PKGS=( i3lock-color )
-
-# ================================================================
-# ZSH + OH-MY-ZSH
-# ================================================================
-setup_zsh_common() {
-  step "Instalando Oh My Zsh"
+setup_zsh() {
+  step "Oh My Zsh"
   if [[ ! -d "$HOME/.oh-my-zsh" ]]; then
     RUNZSH=no sh -c \
       "$(curl -fsSL https://raw.githubusercontent.com/ohmyzsh/ohmyzsh/master/tools/install.sh)"
@@ -256,193 +271,234 @@ setup_zsh_common() {
   local ZSH_CUSTOM="$HOME/.oh-my-zsh/custom"
 
   step "Plugins Zsh"
-  [[ -d "$ZSH_CUSTOM/plugins/zsh-autosuggestions" ]] || \
+  if [[ ! -d "$ZSH_CUSTOM/plugins/zsh-autosuggestions" ]]; then
     git clone https://github.com/zsh-users/zsh-autosuggestions \
       "$ZSH_CUSTOM/plugins/zsh-autosuggestions"
+    ok "zsh-autosuggestions"
+  else
+    info "zsh-autosuggestions ya existe"
+  fi
 
-  [[ -d "$ZSH_CUSTOM/plugins/zsh-syntax-highlighting" ]] || \
+  if [[ ! -d "$ZSH_CUSTOM/plugins/zsh-syntax-highlighting" ]]; then
     git clone https://github.com/zsh-users/zsh-syntax-highlighting \
       "$ZSH_CUSTOM/plugins/zsh-syntax-highlighting"
+    ok "zsh-syntax-highlighting"
+  else
+    info "zsh-syntax-highlighting ya existe"
+  fi
 
-  ok "plugins instalados"
-}
-
-setup_zsh_i3() {
-  setup_zsh_common
-
-  local ZSH_CUSTOM="$HOME/.oh-my-zsh/custom"
-  step "Powerlevel10k (theme i3naro)"
-  [[ -d "$ZSH_CUSTOM/themes/powerlevel10k" ]] || \
+  step "Powerlevel10k"
+  if [[ ! -d "$ZSH_CUSTOM/themes/powerlevel10k" ]]; then
     git clone --depth=1 https://github.com/romkatv/powerlevel10k.git \
       "$ZSH_CUSTOM/themes/powerlevel10k"
-  ok "powerlevel10k instalado"
-}
-
-setup_zsh_bspwm() {
-  setup_zsh_common
+    ok "powerlevel10k instalado"
+  else
+    info "powerlevel10k ya existe"
+  fi
 }
 
 # ================================================================
-# FUENTES — NUEVO REPO (fonts/ en la raíz del repo)
+# FUENTES DEL REPO  (fonts/)
+#
+#   fonts/
+#   ├── *.ttf / *.bdf         → directamente
+#   ├── terminus/  *.otb      → subdirectorio preservado
+#   └── panels/    *.ttf      → subdirectorio preservado
 # ================================================================
 install_fonts() {
-  local repo_dir="$1"
-  local fonts_dir="$repo_dir/fonts"
+  local fonts_src="$1/fonts"
 
-  if [[ ! -d "$fonts_dir" ]]; then
-    warn "No se encontró directorio fonts/ — omitiendo instalación manual de fuentes"
+  if [[ ! -d "$fonts_src" ]]; then
+    warn "No se encontró fonts/ en el repo — skip"
     return
   fi
 
-  step "Instalando fuentes desde fonts/"
+  step "Instalando fuentes del repo"
   local dest="$HOME/.local/share/fonts/i3naro"
   mkdir -p "$dest"
-  cp -r "$fonts_dir"/. "$dest/"
+
+  # Copiar árbol completo preservando terminus/ y panels/
+  cp -r "$fonts_src"/. "$dest/"
+
   fc-cache -fv "$dest" &>/dev/null
-  ok "Fuentes instaladas en $dest"
+  ok "Fuentes → $dest  (terminus, panels, iosevka, fantasque, feather…)"
 }
 
 # ================================================================
-# DOTFILES — I3NARO (nueva estructura: config/ home/)
+# DOTFILES
+#
+# Estructura real del repo z1rov/i3naro:
+#
+#   config/                  → ~/.config/
+#     ├── ascii/             → ~/.config/ascii/
+#     ├── gtk-3.0/           → ~/.config/gtk-3.0/
+#     ├── i3/                → ~/.config/i3/
+#     ├── kitty/             → ~/.config/kitty/
+#     ├── mozilla/           → ~/.mozilla/  ← sale de .config
+#     ├── picom/             → ~/.config/picom/
+#     ├── polybar/           → ~/.config/polybar/
+#     ├── rofi/              → ~/.config/rofi/
+#     └── wallpapers/        → ~/.config/wallpapers/ + ~/Pictures/.wallpapers/
+#
+#   home/
+#     ├── Clipboard          → ~/Clipboard
+#     ├── Documents/user.json→ ~/Documents/user.json
+#     └── Pictures           → ~/Pictures  (dir vacío, ya creado)
+#
+#   fonts/                   → gestionado por install_fonts()
 # ================================================================
-setup_dotfiles_i3() {
-  step "Clonando dotfiles i3naro"
+setup_dotfiles() {
+  step "Clonando i3naro"
+  mkdir -p "$TMPDIR_CLONE"
 
-  local DOTDIR="$TMPDIR_PREFIX/i3naro"
-  mkdir -p "$TMPDIR_PREFIX"
-
-  if [[ -d "$DOTDIR/.git" ]]; then
-    git -C "$DOTDIR" pull
-    ok "Dotfiles actualizados"
+  if [[ -d "$TMPDIR_CLONE/.git" ]]; then
+    git -C "$TMPDIR_CLONE" pull
+    ok "Repo actualizado"
   else
-    git clone "$DOTFILES_I3" "$DOTDIR"
-    ok "Dotfiles clonados"
+    git clone "$DOTFILES_REPO" "$TMPDIR_CLONE"
+    ok "Repo clonado"
   fi
 
-  step "Aplicando configuración i3naro"
+  local REPO="$TMPDIR_CLONE"
+
+  # ── config/ → ~/.config/ ─────────────────────────────────────
+  step "Aplicando config/"
   mkdir -p "$HOME/.config"
 
-  # config/ → ~/.config/
-  if [[ -d "$DOTDIR/config" ]]; then
-    cp -r "$DOTDIR/config/"* "$HOME/.config/"
-    ok "config/ → ~/.config/"
+  if [[ -d "$REPO/config" ]]; then
+    for item in "$REPO/config"/*/; do
+      [[ -e "$item" ]] || continue
+      local name
+      name="$(basename "$item")"
+
+      if [[ "$name" == "mozilla" ]]; then
+        # mozilla sale de .config → va a ~/.mozilla/
+        mkdir -p "$HOME/.mozilla"
+        cp -r "$item/." "$HOME/.mozilla/"
+        ok "config/mozilla → ~/.mozilla/"
+      else
+        cp -r "$item" "$HOME/.config/$name"
+        ok "config/$name → ~/.config/$name"
+      fi
+    done
   else
-    warn "No se encontró config/ en el repo"
+    warn "No se encontró config/"
   fi
 
-  # home/ → ~/  (archivos ocultos como .zshrc, .p10k.zsh, etc.)
-  if [[ -d "$DOTDIR/home" ]]; then
-    # Copiar todo excepto directorios problemáticos
-    find "$DOTDIR/home" -maxdepth 1 \( -name "." -o -name ".." \) -prune -o -print | \
-      while read -r item; do
-        [[ -z "$item" || "$item" == "$DOTDIR/home" ]] && continue
-        local base
-        base="$(basename "$item")"
-        cp -r "$item" "$HOME/$base"
-      done
+  # ── wallpapers (copia adicional en Pictures) ──────────────────
+  if [[ -d "$REPO/config/wallpapers" ]]; then
+    mkdir -p "$HOME/Pictures/.wallpapers"
+    cp -r "$REPO/config/wallpapers/"* "$HOME/Pictures/.wallpapers/"
+    ok "wallpapers → ~/Pictures/.wallpapers/"
+  fi
+
+  # ── home/ → ~/ ───────────────────────────────────────────────
+  step "Aplicando home/"
+  if [[ -d "$REPO/home" ]]; then
+    while IFS= read -r -d '' item; do
+      local rel dest
+      rel="${item#$REPO/home/}"
+      dest="$HOME/$rel"
+      if [[ -d "$item" ]]; then
+        mkdir -p "$dest"
+      else
+        mkdir -p "$(dirname "$dest")"
+        cp "$item" "$dest"
+      fi
+    done < <(find "$REPO/home" -mindepth 1 -print0)
     ok "home/ → ~/"
   else
-    warn "No se encontró home/ en el repo"
+    warn "No se encontró home/"
   fi
 
-  # Fuentes del repo
-  install_fonts "$DOTDIR"
+  # ── Fuentes del repo ──────────────────────────────────────────
+  install_fonts "$REPO"
 
-  # Crear directorios estándar
-  step "Creando carpetas estándar"
-  mkdir -p "$HOME/Documents" "$HOME/Downloads" "$HOME/Music" "$HOME/Videos" \
-           "$HOME/Pictures/.wallpapers" "$HOME/Pictures/Clipboard" "$HOME/CTF"
+  # ── Permisos i3/scripts ───────────────────────────────────────
+  step "Permisos de ejecución"
+  local i3sc="$HOME/.config/i3/scripts"
+  if [[ -d "$i3sc" ]]; then
+    find "$i3sc" -type f -exec chmod 755 {} \;
+    ok "i3/scripts → 755"
+  fi
+
+  # ── Permisos polybar ──────────────────────────────────────────
+  [[ -f "$HOME/.config/polybar/launch.sh" ]] && {
+    chmod +x "$HOME/.config/polybar/launch.sh"
+    ok "polybar/launch.sh → +x"
+  }
+  local pbsc="$HOME/.config/polybar/scripts"
+  if [[ -d "$pbsc" ]]; then
+    find "$pbsc" -type f -exec chmod 755 {} \;
+    ok "polybar/scripts → 755"
+  fi
+
+  # ── Directorios estándar ──────────────────────────────────────
+  step "Directorios estándar"
+  mkdir -p \
+    "$HOME/Documents" \
+    "$HOME/Downloads" \
+    "$HOME/Music" \
+    "$HOME/Videos" \
+    "$HOME/Pictures/.wallpapers" \
+    "$HOME/Pictures/Clipboard" \
+    "$HOME/CTF"
   ok "Directorios creados"
-
-  # Permisos polybar
-  [[ -f "$HOME/.config/polybar/launch.sh" ]] && chmod +x "$HOME/.config/polybar/launch.sh"
-  [[ -f "$HOME/.config/polybar/scripts/ip-detect.sh" ]] && chmod +x "$HOME/.config/polybar/scripts/ip-detect.sh"
-
-  ok "Dotfiles i3naro aplicados"
 }
 
 # ================================================================
-# DOTFILES — BSPWM (estructura: config/ home/ del repo envertex)
+# SERVICIOS
 # ================================================================
-setup_dotfiles_bspwm() {
-  step "Clonando dotfiles bspwm"
+setup_services() {
+  step "Servicios"
 
-  local DOTDIR="$TMPDIR_PREFIX/bspwm"
-  mkdir -p "$TMPDIR_PREFIX"
+  # NetworkManager
+  sudo systemctl enable NetworkManager
+  sudo systemctl start NetworkManager
+  ok "NetworkManager habilitado"
 
-  if [[ -d "$DOTDIR/.git" ]]; then
-    git -C "$DOTDIR" pull
-    ok "Dotfiles actualizados"
+  # i3-wm vs i3-gaps
+  if pacman -Qi i3-wm &>/dev/null; then
+    warn "Removiendo i3-wm (conflicto con i3-gaps)..."
+    sudo pacman -Rns --noconfirm i3-wm || true
+  fi
+
+  # Display manager — solo si no hay uno activo
+  local active_dm
+  active_dm="$(detect_display_manager)"
+
+  if [[ -n "$active_dm" ]]; then
+    warn "Display manager detectado: ${BOLD}${active_dm}${RESET}${YELLOW} — omitiendo lightdm"
   else
-    git clone "$DOTFILES_BSPWM" "$DOTDIR"
-    ok "Dotfiles clonados"
+    info "Sin display manager activo — instalando lightdm"
+    sudo pacman -S --needed --noconfirm lightdm lightdm-gtk-greeter
+    sudo systemctl enable lightdm
+    ok "lightdm habilitado"
   fi
 
-  step "Aplicando configuración bspwm"
-  mkdir -p "$HOME/.config"
-
-  [[ -d "$DOTDIR/config" ]] && {
-    cp -r "$DOTDIR/config/"* "$HOME/.config/"
-    ok "config/ → ~/.config/"
-  }
-
-  [[ -f "$DOTDIR/home/.zshrc" ]] && {
-    cp "$DOTDIR/home/.zshrc" "$HOME/"
-    ok ".zshrc copiado"
-  }
-
-  [[ -d "$DOTDIR/home/.mozilla" ]] && cp -r "$DOTDIR/home/.mozilla" "$HOME/"
-  [[ -d "$DOTDIR/home/.local" ]]   && cp -r "$DOTDIR/home/.local"   "$HOME/"
-
-  # bspwmrc permisos
-  [[ -f "$HOME/.config/bspwm/bspwmrc" ]] && chmod +x "$HOME/.config/bspwm/bspwmrc"
-  find "$HOME/.config/bspwm/scripts" -type f -exec chmod 755 {} \; 2>/dev/null || true
-
-  step "Creando carpetas estándar"
-  mkdir -p "$HOME/Documents" "$HOME/Downloads" "$HOME/CTF"
-  ok "Directorios creados"
-
-  ok "Dotfiles bspwm aplicados"
-}
-
-# ================================================================
-# SERVICIOS — I3NARO
-# ================================================================
-setup_services_i3() {
-  step "Servicios i3wm"
-  sudo systemctl enable NetworkManager lightdm
-  sudo systemctl start NetworkManager
+  # .xinitrc (fallback para startx)
   echo "exec i3" > "$HOME/.xinitrc"
+  ok ".xinitrc → exec i3"
+
+  # Shell
   sudo chsh -s /bin/zsh "$USER_NAME"
-  ok "Servicios i3 configurados"
+  ok "shell → zsh"
 }
 
 # ================================================================
-# SERVICIOS — BSPWM
-# ================================================================
-setup_services_bspwm() {
-  step "Servicios bspwm"
-  sudo systemctl enable NetworkManager lxdm
-  sudo systemctl start NetworkManager
-  echo "exec bspwm" > "$HOME/.xinitrc"
-  sudo chsh -s /bin/zsh "$USER_NAME"
-  ok "Servicios bspwm configurados"
-}
-
-# ================================================================
-# ROOT SYNC (solo bspwm, opcional en i3)
+# ROOT SYNC (opcional)
 # ================================================================
 setup_root_sync() {
   step "Sincronizando config con root"
   sudo chsh -s /bin/zsh root
-  sudo cp -r "$HOME/.oh-my-zsh" /root/ 2>/dev/null || true
-  sudo cp "$HOME/.zshrc" /root/ 2>/dev/null || true
-  sudo cp -r "$HOME/.config" /root/ 2>/dev/null || true
+  [[ -d "$HOME/.oh-my-zsh" ]] && sudo cp -r "$HOME/.oh-my-zsh" /root/
+  [[ -f "$HOME/.zshrc" ]]     && sudo cp "$HOME/.zshrc" /root/
+  [[ -d "$HOME/.config" ]]    && sudo cp -r "$HOME/.config" /root/
   ok "Root sincronizado"
 }
 
 # ================================================================
-# SSH (módulo compartido — idempotente)
+# SSH
 # ================================================================
 setup_ssh() {
   banner
@@ -450,15 +506,15 @@ setup_ssh() {
   ans="${ans,,}"
   [[ -n "$ans" && "$ans" != "y" && "$ans" != "yes" ]] && return
 
-  step "Configuración de claves SSH"
+  step "Configuración SSH"
 
-  echo -e "\n  Modo de clave:"
+  echo -e "\n  Modo:"
   echo -e "   ${BOLD}1)${RESET} Sin passphrase (default)"
   echo -e "   ${BOLD}2)${RESET} Con passphrase (recomendado)\n"
   read -rp "  Opción [1]: " mode
   [[ "$mode" != "2" ]] && mode=1
 
-  read -rp "  Etiqueta de clave [${USER_NAME}]: " SSH_USER
+  read -rp "  Etiqueta [${USER_NAME}]: " SSH_USER
   SSH_USER="${SSH_USER:-$USER_NAME}"
 
   mkdir -p "$HOME/.ssh"
@@ -469,7 +525,7 @@ setup_ssh() {
   if [[ "$mode" == "2" ]]; then
     while true; do
       read -s -p "  Passphrase RSA: " p1; echo
-      read -s -p "  Confirmar: " p2; echo
+      read -s -p "  Confirmar:      " p2; echo
       [[ "$p1" == "$p2" ]] && PASS_RSA="$p1" && break
       err "No coinciden"
     done
@@ -489,19 +545,22 @@ setup_ssh() {
     local path="$1" type="$2" bits="$3" pass="$4"
     if [[ -f "$path" ]]; then
       read -rp "  [!] $path existe — ¿sobreescribir? (y/N): " ow
-      [[ "${ow,,}" != "y" ]] && return
-      cp "$path" "$path.bak" 2>/dev/null || true
+      [[ "${ow,,}" != "y" ]] && { info "Clave $type omitida"; return; }
+      cp "$path"     "$path.bak"     2>/dev/null || true
       cp "$path.pub" "$path.pub.bak" 2>/dev/null || true
       rm -f "$path" "$path.pub"
     fi
+
     if [[ "$type" == "rsa" ]]; then
-      ssh-keygen -t rsa -b "$bits" -f "$path" -C "${SSH_USER}@$(hostname)" -N "$pass" -q
+      ssh-keygen -t rsa -b "$bits" -f "$path" \
+        -C "${SSH_USER}@$(hostname)" -N "$pass" -q
     else
-      ssh-keygen -t ed25519 -f "$path" -C "${SSH_USER}@$(hostname)" -N "$pass" -q
+      ssh-keygen -t ed25519 -f "$path" \
+        -C "${SSH_USER}@$(hostname)" -N "$pass" -q
     fi
     chmod 600 "$path"
     chmod 644 "$path.pub"
-    ok "Clave $type generada → $path"
+    ok "Clave $type → $path"
   }
 
   _gen_key "$HOME/.ssh/id_rsa"     "rsa"     4096 "$PASS_RSA"
@@ -509,12 +568,12 @@ setup_ssh() {
 
   banner
   [[ -f "$HOME/.ssh/id_rsa.pub" ]] && {
-    echo -e "  ${BOLD}--- id_rsa.pub ---${RESET}"
+    echo -e "  ${BOLD}─── id_rsa.pub ────────────────────────────────${RESET}"
     cat "$HOME/.ssh/id_rsa.pub"
     echo
   }
   [[ -f "$HOME/.ssh/id_ed25519.pub" ]] && {
-    echo -e "  ${BOLD}--- id_ed25519.pub ---${RESET}"
+    echo -e "  ${BOLD}─── id_ed25519.pub ────────────────────────────${RESET}"
     cat "$HOME/.ssh/id_ed25519.pub"
     echo
   }
@@ -523,58 +582,12 @@ setup_ssh() {
 }
 
 # ================================================================
-# LIMPIEZA
-# ================================================================
-cleanup() {
-  step "Limpiando archivos temporales"
-  rm -rf "$TMPDIR_PREFIX" 2>/dev/null || true
-  ok "Limpieza completada"
-}
-
-# ================================================================
-# FLUJO — I3NARO
-# ================================================================
-install_i3naro() {
-  step "=== INSTALANDO i3naro ==="
-
-  # Remover i3-wm si existe (conflicto con i3-gaps)
-  if pacman -Qi i3-wm &>/dev/null; then
-    warn "Removiendo i3-wm (conflicto con i3-gaps)..."
-    sudo pacman -Rns --noconfirm i3-wm || true
-  fi
-
-  install_pacman "${I3_PACMAN_PKGS[@]}"
-  setup_zsh_i3
-  setup_dotfiles_i3
-  setup_services_i3
-
-  read -rp "  ¿Sincronizar config con root? (y/N): " do_root
-  [[ "${do_root,,}" == "y" ]] && setup_root_sync
-}
-
-# ================================================================
-# FLUJO — BSPWM
-# ================================================================
-install_bspwm() {
-  step "=== INSTALANDO bspwm ==="
-  install_pacman "${BSPWM_PACMAN_PKGS[@]}"
-  install_yay_pkgs "${BSPWM_AUR_PKGS[@]}"
-  setup_zsh_bspwm
-  setup_dotfiles_bspwm
-  setup_services_bspwm
-
-  read -rp "  ¿Sincronizar config con root? (y/N): " do_root
-  [[ "${do_root,,}" == "y" ]] && setup_root_sync
-
-  step "Regenerando initramfs (dracut)"
-  sudo dracut --regenerate-all --force 2>/dev/null || \
-    warn "dracut no disponible — omitido (no crítico)"
-}
-
-# ================================================================
 # MAIN
 # ================================================================
 main() {
+  check_root
+  check_arch
+
   run_train
 
   banner
@@ -582,24 +595,28 @@ main() {
   ans="${ans,,}"
   [[ -n "$ans" && "$ans" != "y" && "$ans" != "yes" ]] && exit 0
 
-  choose_mode
   setup_sudo_cache
   setup_sudo_nopasswd
   setup_yay
 
-  case "$MODE" in
-    1) install_i3naro ;;
-    2) install_bspwm ;;
-    3) install_i3naro; install_bspwm ;;
-  esac
+  install_pacman "${PACMAN_PKGS[@]}"
 
-  setup_ssh
-  cleanup
+  setup_zsh
+  setup_dotfiles
+  setup_services
 
   banner
-  echo -e "  ${GREEN}${BOLD}✔  INSTALACIÓN COMPLETADA${RESET}"
-  echo -e "  ${CYAN}Reinicia la sesión o ejecuta: ${BOLD}exec zsh${RESET}"
-  echo
+  read -rp "  ¿Sincronizar config con root? (y/N): " do_root
+  [[ "${do_root,,}" == "y" ]] && setup_root_sync
+
+  setup_ssh
+
+  banner
+  echo -e "  ${GREEN}${BOLD}✔  INSTALACIÓN COMPLETADA${RESET}\n"
+  echo -e "  ${CYAN}Próximos pasos:${RESET}"
+  echo -e "   • Reinicia la sesión o ejecuta: ${BOLD}exec zsh${RESET}"
+  echo -e "   • El WM arranca via ${BOLD}lightdm${RESET} (o ${BOLD}startx${RESET} con .xinitrc)"
+  echo -e "   • Wallpapers en: ${BOLD}~/Pictures/.wallpapers/${RESET}\n"
 }
 
 main "$@"
