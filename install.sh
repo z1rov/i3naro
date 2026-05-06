@@ -98,17 +98,17 @@ EOF
 # CHECKS
 # ================================================================
 check_root() {
-  [[ $EUID -eq 0 ]] && {
+  if [[ $EUID -eq 0 ]]; then
     err "No ejecutes como root. Usa tu usuario normal."
     exit 1
-  }
+  fi
 }
 
 check_arch() {
-  command -v pacman &>/dev/null || {
+  if ! command -v pacman &>/dev/null; then
     err "Este instalador es solo para Arch Linux."
     exit 1
-  }
+  fi
 }
 
 # ================================================================
@@ -126,7 +126,6 @@ trap '_cleanup' EXIT INT TERM
 setup_sudo_cache() {
   step "Cacheando credenciales sudo"
   sudo -v
-  # Keepalive en background
   while true; do
     sudo -n true
     sleep 50
@@ -174,16 +173,20 @@ setup_yay() {
 
 # ================================================================
 # DETECTAR DISPLAY MANAGER ACTIVO
+# FIX: systemctl is-enabled retorna != 0 si el DM no existe,
+#      lo que con set -e mataba el script silenciosamente.
+#      Ahora cada check tiene || true para evitarlo.
 # ================================================================
 detect_display_manager() {
   local dm_list=("gdm" "sddm" "lightdm" "ly" "lxdm" "slim" "xdm" "greetd" "emptty")
   for dm in "${dm_list[@]}"; do
-    if systemctl is-enabled "$dm" &>/dev/null; then
+    if systemctl is-enabled "$dm" &>/dev/null || systemctl is-active "$dm" &>/dev/null; then
       echo "$dm"
       return 0
     fi
   done
   echo ""
+  return 0
 }
 
 # ================================================================
@@ -298,12 +301,7 @@ setup_zsh() {
 }
 
 # ================================================================
-# FUENTES DEL REPO  (fonts/)
-#
-#   fonts/
-#   ├── *.ttf / *.bdf         → directamente
-#   ├── terminus/  *.otb      → subdirectorio preservado
-#   └── panels/    *.ttf      → subdirectorio preservado
+# FUENTES DEL REPO
 # ================================================================
 install_fonts() {
   local fonts_src="$1/fonts"
@@ -317,7 +315,6 @@ install_fonts() {
   local dest="$HOME/.local/share/fonts/i3naro"
   mkdir -p "$dest"
 
-  # Copiar árbol completo preservando terminus/ y panels/
   cp -r "$fonts_src"/. "$dest/"
 
   fc-cache -fv "$dest" &>/dev/null
@@ -326,26 +323,6 @@ install_fonts() {
 
 # ================================================================
 # DOTFILES
-#
-# Estructura real del repo z1rov/i3naro:
-#
-#   config/                  → ~/.config/
-#     ├── ascii/             → ~/.config/ascii/
-#     ├── gtk-3.0/           → ~/.config/gtk-3.0/
-#     ├── i3/                → ~/.config/i3/
-#     ├── kitty/             → ~/.config/kitty/
-#     ├── mozilla/           → ~/.mozilla/  ← sale de .config
-#     ├── picom/             → ~/.config/picom/
-#     ├── polybar/           → ~/.config/polybar/
-#     ├── rofi/              → ~/.config/rofi/
-#     └── wallpapers/        → ~/.config/wallpapers/ + ~/Pictures/.wallpapers/
-#
-#   home/
-#     ├── Clipboard          → ~/Clipboard
-#     ├── Documents/user.json→ ~/Documents/user.json
-#     └── Pictures           → ~/Pictures  (dir vacío, ya creado)
-#
-#   fonts/                   → gestionado por install_fonts()
 # ================================================================
 setup_dotfiles() {
   step "Clonando i3naro"
@@ -361,7 +338,6 @@ setup_dotfiles() {
 
   local REPO="$TMPDIR_CLONE"
 
-  # ── config/ → ~/.config/ ─────────────────────────────────────
   step "Aplicando config/"
   mkdir -p "$HOME/.config"
 
@@ -372,7 +348,6 @@ setup_dotfiles() {
       name="$(basename "$item")"
 
       if [[ "$name" == "mozilla" ]]; then
-        # mozilla sale de .config → va a ~/.mozilla/
         mkdir -p "$HOME/.mozilla"
         cp -r "$item/." "$HOME/.mozilla/"
         ok "config/mozilla → ~/.mozilla/"
@@ -385,14 +360,12 @@ setup_dotfiles() {
     warn "No se encontró config/"
   fi
 
-  # ── wallpapers (copia adicional en Pictures) ──────────────────
   if [[ -d "$REPO/config/wallpapers" ]]; then
     mkdir -p "$HOME/Pictures/.wallpapers"
     cp -r "$REPO/config/wallpapers/"* "$HOME/Pictures/.wallpapers/"
     ok "wallpapers → ~/Pictures/.wallpapers/"
   fi
 
-  # ── home/ → ~/ ───────────────────────────────────────────────
   step "Aplicando home/"
   if [[ -d "$REPO/home" ]]; then
     while IFS= read -r -d '' item; do
@@ -411,10 +384,8 @@ setup_dotfiles() {
     warn "No se encontró home/"
   fi
 
-  # ── Fuentes del repo ──────────────────────────────────────────
   install_fonts "$REPO"
 
-  # ── Permisos i3/scripts ───────────────────────────────────────
   step "Permisos de ejecución"
   local i3sc="$HOME/.config/i3/scripts"
   if [[ -d "$i3sc" ]]; then
@@ -422,7 +393,6 @@ setup_dotfiles() {
     ok "i3/scripts → 755"
   fi
 
-  # ── Permisos polybar ──────────────────────────────────────────
   [[ -f "$HOME/.config/polybar/launch.sh" ]] && {
     chmod +x "$HOME/.config/polybar/launch.sh"
     ok "polybar/launch.sh → +x"
@@ -433,7 +403,6 @@ setup_dotfiles() {
     ok "polybar/scripts → 755"
   fi
 
-  # ── Directorios estándar ──────────────────────────────────────
   step "Directorios estándar"
   mkdir -p \
     "$HOME/Documents" \
@@ -452,18 +421,15 @@ setup_dotfiles() {
 setup_services() {
   step "Servicios"
 
-  # NetworkManager
   sudo systemctl enable NetworkManager
   sudo systemctl start NetworkManager
   ok "NetworkManager habilitado"
 
-  # i3-wm vs i3-gaps
   if pacman -Qi i3-wm &>/dev/null; then
     warn "Removiendo i3-wm (conflicto con i3-gaps)..."
     sudo pacman -Rns --noconfirm i3-wm || true
   fi
 
-  # Display manager — solo si no hay uno activo
   local active_dm
   active_dm="$(detect_display_manager)"
 
@@ -476,17 +442,15 @@ setup_services() {
     ok "lightdm habilitado"
   fi
 
-  # .xinitrc (fallback para startx)
   echo "exec i3" > "$HOME/.xinitrc"
   ok ".xinitrc → exec i3"
 
-  # Shell
   sudo chsh -s /bin/zsh "$USER_NAME"
   ok "shell → zsh"
 }
 
 # ================================================================
-# ROOT SYNC (opcional)
+# ROOT SYNC
 # ================================================================
 setup_root_sync() {
   step "Sincronizando config con root"
