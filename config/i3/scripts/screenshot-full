@@ -1,0 +1,21 @@
+#!/bin/bash
+DIR="$HOME/Pictures/Clipboard"
+mkdir -p "$DIR"
+
+# Nombre incremental
+n=$(find "$DIR" -maxdepth 1 -type f -name 'img*.png' \
+    | grep -oP '(?<=img)\d+' | sort -n | tail -1)
+[ -z "$n" ] && n=0
+IMG="$DIR/img$((n+1)).png"
+
+# Captura directa (no necesita GUI ni picom)
+DISPLAY=:0 flameshot full -p "$IMG"
+
+# Validar
+if xxd -p -l 4 "$IMG" 2>/dev/null | grep -qi '^89504e47'; then
+    xclip -selection clipboard -t image/png -i "$IMG"
+    notify-send "📸 Captura guardada" "$(basename "$IMG")"
+else
+    rm -f "$IMG"
+    notify-send "⚠️ Falló la captura full"
+fi

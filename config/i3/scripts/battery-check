@@ -1,0 +1,41 @@
+#!/bin/bash
+# Author: z1rov
+
+LOW_DONE=0
+BAT_PATH=""
+
+for p in /sys/class/power_supply/*; do
+    [ -f "$p/type" ] || continue
+    if grep -q "Battery" "$p/type"; then
+        BAT_PATH="$p"
+        break
+    fi
+done
+
+[ -n "$BAT_PATH" ] || exit 0
+
+notify_low() {
+    export DISPLAY=:0
+    export DBUS_SESSION_BUS_ADDRESS="unix:path=/run/user/$(id -u)/bus"
+    dunstify -u critical -r 8888 "Battery Low" "Battery under 10% - lowering brightness" >/dev/null 2>&1
+}
+
+while true; do
+    BAT=$(cat "$BAT_PATH/capacity" 2>/dev/null)
+    STATUS=$(cat "$BAT_PATH/status" 2>/dev/null)
+
+    if [[ "$BAT" =~ ^[0-9]+$ ]]; then
+
+        if [[ "$STATUS" == "Discharging" && "$BAT" -le 10 && "$LOW_DONE" -eq 0 ]]; then
+            brightnessctl set 5% >/dev/null 2>&1
+            notify_low
+            LOW_DONE=1
+        fi
+
+        if [[ "$STATUS" != "Discharging" ]]; then
+            LOW_DONE=0
+        fi
+    fi
+
+    sleep 60
+done

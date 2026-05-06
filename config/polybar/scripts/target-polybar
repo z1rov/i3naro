@@ -1,0 +1,14 @@
+#!/usr/bin/env bash
+
+CACHE="$HOME/.cache/target_ip"
+
+if [[ -f "$CACHE" ]]; then
+    TARGET=$(tr -d '[:space:]' < "$CACHE")
+
+    if [[ "$TARGET" =~ ^([0-9]{1,3}\.){3}[0-9]{1,3}$ ]]; then
+        echo "󰓾 $TARGET "
+        exit 0
+    fi
+fi
+
+echo "󰓾 No target "

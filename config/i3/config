@@ -1,0 +1,201 @@
+# Author: z1rov
+
+# ─── Modificador ───────────────────────────────────────────────
+set $mod Mod4
+# ─── Fuente ────────────────────────────────────────────────────
+font pango:Terminus 20
+
+# ─── Variables de entorno ──────────────────────────────────────
+exec --no-startup-id systemctl --user import-environment PATH
+
+# ─── Autostart ─────────────────────────────────────────────────
+exec --no-startup-id dex --autostart --environment i3
+exec --no-startup-id xss-lock --transfer-sleep-lock -- i3lock --nofork
+exec --no-startup-id nm-applet
+exec --no-startup-id xset -b
+
+# Picom 
+exec_always --no-startup-id sh -c "sleep 2 && picom --backend xrender --config ~/.config/picom/picom.conf"
+
+# Polybar
+exec_always --no-startup-id ~/.config/polybar/launch.sh
+
+# Wallpaper aleatorio entre img1.png, img2.png, img3.png (
+exec --no-startup-id sh -c 'n=$((RANDOM % 3 + 1)); feh --bg-fill "$HOME/.config/wallpapers/img${n}.png"'
+
+# Dunst 
+exec --no-startup-id sh -c 'pgrep -x dunst >/dev/null || dunst &'
+
+# Scripts del rice 
+exec --no-startup-id ~/.config/i3/scripts/targetip
+
+# Battery check
+exec --no-startup-id sh -c 'pgrep -f battery-check >/dev/null || ~/.config/i3/scripts/battery-check &'
+
+# ─── Volumen ───────────────────────────────────────────────────
+bindsym XF86AudioRaiseVolume exec --no-startup-id pactl set-sink-volume @DEFAULT_SINK@ +5% && notify-send " Vol +5%"
+bindsym XF86AudioLowerVolume exec --no-startup-id pactl set-sink-volume @DEFAULT_SINK@ -5% && notify-send " Vol -5%"
+bindsym XF86AudioMute        exec --no-startup-id pactl set-sink-mute @DEFAULT_SINK@ toggle && notify-send " Mute"
+bindsym XF86AudioMicMute     exec --no-startup-id pactl set-source-mute @DEFAULT_SOURCE@ toggle && notify-send "🎤 Mic Toggle"
+
+# ─── Brillo ────────────────────────────────────────────────────
+bindsym XF86MonBrightnessUp   exec --no-startup-id brightnessctl set +10%
+bindsym XF86MonBrightnessDown exec --no-startup-id brightnessctl set 10%-
+
+# ─── Controles de media ────────────────────────────────────────
+bindsym XF86AudioPlay exec --no-startup-id playerctl play-pause
+bindsym XF86AudioNext exec --no-startup-id playerctl next
+bindsym XF86AudioPrev exec --no-startup-id playerctl previous
+bindsym XF86AudioStop exec --no-startup-id playerctl stop
+
+# ─── WiFi / Bluetooth ──────────────────────────────────────────
+bindsym XF86WLAN      exec --no-startup-id sh -c 'rfkill toggle wifi; notify-send "✈️  WiFi toggle"'
+bindsym XF86Bluetooth exec --no-startup-id sh -c 'rfkill toggle bluetooth; notify-send "🔵 Bluetooth toggle"'
+
+# ─── Mouse ─────────────────────────────────────────────────────
+floating_modifier $mod
+tiling_drag modifier titlebar
+focus_follows_mouse yes
+
+# ─── Terminal ──────────────────────────────────────────────────
+bindsym $mod+Return exec --no-startup-id sh -c 'cd ~ && exec kitty'
+
+# ─── HTB VPN flotante ──────────────────────────────────────────
+# super + 9 → kitty flotante con htb-vpn
+bindsym $mod+9 exec --no-startup-id kitty --class FloatingTerm --title "HTB VPN" --override initial_window_width=400 --override initial_window_height=300 -e ~/.config/i3/scripts/htb-vpn
+
+# ─── Rice editor ───────────────────────────────────────────────
+bindsym $mod+r exec --no-startup-id RiceEditor
+
+# ─── Kill ventana ──────────────────────────────────────────────
+bindsym $mod+x kill
+
+# ─── Lanzador (Rofi) ───────────────────────────────────────────
+bindsym $mod+d exec --no-startup-id rofi -show drun -theme $HOME/.config/rofi/config.rasi
+
+# ─── Flameshot ───────────────────────
+# Después (usa el script que espera correctamente):
+bindsym $mod+shift+s exec --no-startup-id ~/.config/i3/scripts/screenshot-gui
+bindsym $mod+s exec --no-startup-id ~/.config/i3/scripts/screenshot-full
+
+# ─── Movimiento entre ventanas ─────────────────────────────────
+bindsym $mod+Left  focus left
+bindsym $mod+Down  focus down
+bindsym $mod+Up    focus up
+bindsym $mod+Right focus right
+
+# ─── Mover ventanas ────────────────────────────────────────────
+bindsym $mod+Shift+Left  move left
+bindsym $mod+Shift+Down  move down
+bindsym $mod+Shift+Up    move up
+bindsym $mod+Shift+Right move right
+
+# ─── Divisiones ────────────────────────────────────────────────
+bindsym $mod+h split h
+bindsym $mod+v split v
+
+# ─── Pantalla completa / monocle ───────────────────────────────
+# super + f (igual que sxhkd toggle fullscreen/monocle)
+bindsym $mod+f fullscreen toggle
+
+# ─── Layouts ───────────────────────────────────────────────────
+bindsym $mod+w layout tabbed
+bindsym $mod+e layout toggle split
+
+# ─── Flotantes ─────────────────────────────────────────────────
+bindsym $mod+Shift+space floating toggle
+bindsym $mod+space       focus mode_toggle
+
+# ─── Contenedor padre ──────────────────────────────────────────
+bindsym $mod+a focus parent
+
+# ─── Rotar ventanas (equivalente a bspc node @/ --rotate) ──────
+# ctrl + Tab → rotar 90 grados (i3 no tiene rotate nativo, usamos layout)
+bindsym ctrl+Tab layout toggle split
+
+# super + ctrl + r → simula rotate con layout tabbed
+bindsym $mod+ctrl+r layout toggle tabbed stacking split
+
+# ─── Workspaces ────────────────────────────────────────────────
+set $ws1 "1"
+set $ws2 "2"
+set $ws3 "3"
+set $ws4 "4"
+set $ws5 "5"
+
+bindsym $mod+1 workspace number $ws1
+bindsym $mod+2 workspace number $ws2
+bindsym $mod+3 workspace number $ws3
+bindsym $mod+4 workspace number $ws4
+bindsym $mod+5 workspace number $ws5
+
+bindsym $mod+Shift+1 move container to workspace number $ws1
+bindsym $mod+Shift+2 move container to workspace number $ws2
+bindsym $mod+Shift+3 move container to workspace number $ws3
+bindsym $mod+Shift+4 move container to workspace number $ws4
+bindsym $mod+Shift+5 move container to workspace number $ws5
+
+# Navegar entre escritorios (prev/next) — super + Left/Right ya usado arriba para focus
+# Usamos super + ctrl + Left/Right para moverse entre desktops
+bindsym $mod+ctrl+Left  workspace prev
+bindsym $mod+ctrl+Right workspace next
+
+# ─── Cerrar todas las ventanas del workspace actual ────────────
+# super + ctrl + x (equivalente a bspc query -N -d | xargs bspc node -c)
+bindsym $mod+ctrl+x exec --no-startup-id sh -c 'i3-msg "[workspace=__focused__] kill"'
+
+# ─── Recarga, reinicio y salida ────────────────────────────────
+bindsym $mod+Shift+c reload
+bindsym $mod+Shift+r restart
+bindsym $mod+Shift+e exec "i3-nagbar -t warning -m '¿Salir de i3?' -B 'Sí, salir' 'i3-msg exit'"
+
+# ─── Apagar / Reiniciar / Bloquear / xkill ─────────────────────
+# ctrl + super + alt + {p,r,q,l,k,s} (igual que sxhkd)
+bindsym ctrl+$mod+Mod1+p exec --no-startup-id systemctl poweroff
+bindsym ctrl+$mod+Mod1+r exec --no-startup-id systemctl reboot
+bindsym ctrl+$mod+Mod1+q exec --no-startup-id i3-msg exit
+bindsym ctrl+$mod+Mod1+l exec --no-startup-id ScreenLocker
+bindsym ctrl+$mod+Mod1+k exec --no-startup-id xkill
+bindsym ctrl+$mod+Mod1+s exec --no-startup-id SoftReload
+
+# ─── Modo redimensionar ────────────────────────────────────────
+# alt + flechas para resize dinámico (igual que sxhkd)
+bindsym Mod1+Left  exec --no-startup-id i3-msg resize shrink width 20 px or 20 ppt
+bindsym Mod1+Right exec --no-startup-id i3-msg resize grow width 20 px or 20 ppt
+bindsym Mod1+Up    exec --no-startup-id i3-msg resize shrink height 20 px or 20 ppt
+bindsym Mod1+Down  exec --no-startup-id i3-msg resize grow height 20 px or 20 ppt
+
+mode "resize" {
+    bindsym Left  resize shrink width  10 px or 10 ppt
+    bindsym Right resize grow   width  10 px or 10 ppt
+    bindsym Up    resize shrink height 10 px or 10 ppt
+    bindsym Down  resize grow   height 10 px or 10 ppt
+
+    bindsym Return mode "default"
+    bindsym Escape mode "default"
+    bindsym $mod+r mode "default"
+}
+# (super+r está ocupado por RiceEditor, usa este modo con Mod1+r si lo necesitas)
+bindsym Mod1+r mode "resize"
+
+# ─── Gaps (equivalente a bspc config window_gap 9 + paddings) ──
+gaps inner 9
+gaps outer 3
+
+# ─── Bordes ────────────────────────────────────────────────────
+new_window pixel 0
+new_float  pixel 0
+
+# bspc config border_width 0 → sin bordes
+for_window [class=".*"] border pixel 0
+
+# ─── Ventanas flotantes ────────────────────────────────────────
+# bspc rule -a FloatingTerm state=floating center=true
+for_window [class="FloatingTerm"] floating enable, move position center
+for_window [title="HTB VPN"]      floating enable, move position center
+
+# ─── Colores (borde invisible pero definidos igual) ────────────
+client.focused          #ff0000 #ff0000 #ffffff #ff0000
+client.unfocused        #000000 #000000 #ffffff #000000
+client.focused_inactive #222222 #222222 #ffffff #222222
+client.urgent           #ff0000 #ff0000 #ffffff #ff0000

@@ -1,0 +1,79 @@
+configuration {
+    modi:                "drun";
+    font:                "JetBrainsMono Nerd Font 10";
+    display-drun:        "";
+    drun-display-format: "{icon}  {name}";
+    sidebar-mode:        false;
+    show-icons:          true;
+}
+@theme "/dev/null"
+* {
+    bg:                  #101010;
+    fg:                  #FFFFFF;
+    background-color:    transparent;
+    text-color:          @fg;
+}
+window {
+    transparency:        "real";
+    width:               600px;
+    border-radius:       10px;
+    background-color:    @bg;
+    location:            center;
+    anchor:              center;
+}
+prompt {
+    enabled: false;
+}
+mainbox {
+    children:            [ inputbar, listview ];
+    border-radius:       10px;
+    background-color:    transparent;
+}
+inputbar {
+    children:            [ prompt, entry ];
+    expand:              false;
+    background-color:    transparent;
+    padding:             20px 30px 10px 30px;
+}
+entry {
+    placeholder:         "Search";
+    placeholder-color:   @fg;
+    expand:              true;
+    padding:             12px;
+    border-radius:       8px;
+    background-color:    rgba(16,16,16,0.75);
+    text-color:          @fg;
+}
+listview {
+    columns:             1;
+    lines:               4;
+    cycle:               false;
+    dynamic:             true;
+    layout:              vertical;
+    padding:             10px 30px 20px 30px;
+    spacing:             10px;
+    background-color:    transparent;
+}
+element {
+    orientation:         horizontal;
+    padding:             10px 12px;
+    spacing:             12px;
+    border-radius:       8px;
+    background-color:    rgba(16,16,16,0.60);
+}
+element-icon {
+    size:                1.4em;
+    margin:              0px 8px 0px 5px;
+    background-color:    transparent;
+    vertical-align:      0.5;
+}
+element-text {
+    expand:              true;
+    vertical-align:      0.5;
+    background-color:    transparent;
+    text-color:          inherit;
+}
+element selected {
+    background-color:    rgba(34,41,43,0.90);
+    border-radius:       8px;
+}

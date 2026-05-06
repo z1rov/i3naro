@@ -1,0 +1,38 @@
+#!/bin/bash
+# ~/.config/i3/scripts/screenshot-gui
+
+DIR="$HOME/Pictures/Clipboard"
+mkdir -p "$DIR"
+
+# Esperar a que no haya instancias residuales
+pkill -x flameshot 2>/dev/null
+sleep 0.5
+
+# Generar nombre incremental
+n=$(find "$DIR" -maxdepth 1 -type f -name 'img*.png' \
+    | grep -oP '(?<=img)\d+' | sort -n | tail -1)
+[ -z "$n" ] && n=0
+IMG="$DIR/img$((n+1)).png"
+
+# Lanzar con DISPLAY explícito y evitar el -r (stdout) que rompe Qt
+DISPLAY=:0 flameshot gui --path "$DIR" &
+FPID=$!
+
+# Esperar a que Flameshot termine (el usuario selecciona/cancela)
+wait $FPID
+
+# Tomar el archivo más reciente que haya creado flameshot
+LAST=$(find "$DIR" -maxdepth 1 -type f -name '*.png' \
+       -newer "$DIR" -printf '%T@ %p\n' 2>/dev/null \
+       | sort -n | tail -1 | cut -d' ' -f2-)
+
+# Validar magic bytes PNG
+if [ -n "$LAST" ] && xxd -p -l 4 "$LAST" | grep -qi '^89504e47'; then
+    # Renombrar al esquema imgN.png
+    mv "$LAST" "$IMG"
+    xclip -selection clipboard -t image/png -i "$IMG"
+    notify-send "📸 Captura guardada" "$IMG"
+else
+    [ -f "$IMG" ] && rm -f "$IMG"
+    notify-send "⚠️ Captura cancelada o fallida"
+fi

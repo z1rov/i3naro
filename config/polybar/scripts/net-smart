@@ -1,0 +1,52 @@
+#!/usr/bin/env bash
+
+CACHE="$HOME/.cache/current_net_ip"
+
+get_ip() {
+    ip -4 addr show "$1" 2>/dev/null | awk '/inet /{print $2}' | cut -d/ -f1 | head -n1
+}
+
+get_first_active_iface() {
+    local pattern="$1"
+
+    ip -o link show | awk -F': ' '{print $2}' | while read -r iface; do
+        iface_clean="${iface%%@*}"
+
+        if [[ "$iface_clean" =~ $pattern ]]; then
+            state=$(cat /sys/class/net/"$iface_clean"/operstate 2>/dev/null)
+
+            if [[ "$state" == "up" || "$state" == "unknown" ]]; then
+                ipaddr=$(get_ip "$iface_clean")
+                if [[ -n "$ipaddr" ]]; then
+                    echo "$ipaddr" > "$CACHE"
+                    echo "$iface_clean|$ipaddr"
+                    return
+                fi
+            fi
+        fi
+    done
+}
+
+vpn=$(get_first_active_iface '^(tun[0-9]+|wg[0-9]+|tap[0-9]+|ppp[0-9]+|htb.*|vpn.*)$')
+if [[ -n "$vpn" ]]; then
+    ipaddr="${vpn##*|}"
+    echo "󰖂 $ipaddr"
+    exit 0
+fi
+
+eth=$(get_first_active_iface '^(eth[0-9]+|enp.*|eno.*|enx.*)$')
+if [[ -n "$eth" ]]; then
+    ipaddr="${eth##*|}"
+    echo "󰈀 $ipaddr"
+    exit 0
+fi
+
+wifi=$(get_first_active_iface '^(wlan[0-9]+|wlp.*|wlx.*|mon\..*|p2p-dev-.*)$')
+if [[ -n "$wifi" ]]; then
+    ipaddr="${wifi##*|}"
+    echo "󰖩 $ipaddr"
+    exit 0
+fi
+
+rm -f "$CACHE"
+echo "󰖪 Offline"
