@@ -198,7 +198,7 @@ PACMAN_PKGS=(
   # D-Bus (necesario para dbus-launch en .xinitrc)
   dbus
   # WM + compositor
-  i3-gaps picom
+  i3-wm i3status i3lock picom
   # Bar
   polybar
   # Terminales
