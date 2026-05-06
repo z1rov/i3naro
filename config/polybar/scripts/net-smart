@@ -33,8 +33,7 @@ if [[ -n "$vpn" ]]; then
     echo "󰖂 $ipaddr"
     exit 0
 fi
-
-eth=$(get_first_active_iface '^(eth[0-9]+|enp.*|eno.*|enx.*)$')
+eth=$(get_first_active_iface '^(eth[0-9]+|enp.*|eno.*|enx.*|ens.*)$')
 if [[ -n "$eth" ]]; then
     ipaddr="${eth##*|}"
     echo "󰈀 $ipaddr"
