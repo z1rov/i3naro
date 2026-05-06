@@ -1,14 +1,13 @@
 #!/usr/bin/env bash
 set -e
 
-echo "[+] Instalando paquetes VMware..."
+echo "[+] Instalando herramientas VMware..."
 
 sudo pacman -S --needed --noconfirm \
-    xf86-video-vmware \
     open-vm-tools \
     xorg-xrandr
 
-echo "[+] Activando servicios VMware..."
+echo "[+] Activando vmtools..."
 
 sudo systemctl enable --now vmtoolsd
 
@@ -16,31 +15,14 @@ echo "[+] Detectando pantalla..."
 
 OUTPUT=$(xrandr | grep " connected" | cut -d" " -f1)
 
-echo "[+] Pantalla detectada: $OUTPUT"
+echo "[+] Output: $OUTPUT"
 
-# buscar mejor resolución disponible
-BEST_MODE=$(xrandr | grep -A1 "$OUTPUT connected" | \
-    grep -oP '^[ ]+\K[0-9]+x[0-9]+' | tail -n 1)
+BEST_MODE=$(xrandr | grep -A1 "$OUTPUT connected" | grep -oP '^[ ]+\K[0-9]+x[0-9]+' | tail -n 1)
 
-if [ -z "$BEST_MODE" ]; then
-    BEST_MODE="1920x1080"
-fi
+BEST_MODE=${BEST_MODE:-1920x1080}
 
-echo "[+] Aplicando resolución: $BEST_MODE"
+echo "[+] Aplicando: $BEST_MODE"
 
 xrandr --output "$OUTPUT" --mode "$BEST_MODE" || true
 
-echo "[+] Configurando autostart en i3..."
-
-mkdir -p ~/.config/i3
-
-if ! grep -q "vmware-user" ~/.config/i3/config 2>/dev/null; then
-cat <<EOF >> ~/.config/i3/config
-
-# VMware auto resize
-exec --no-startup-id vmware-user
-exec --no-startup-id xrandr --output $OUTPUT --mode $BEST_MODE
-EOF
-fi
-
-echo "[✔] Listo. Reinicia sesión o ejecuta: i3-msg restart"
+echo "[+] Listo"
