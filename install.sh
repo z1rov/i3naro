@@ -194,7 +194,9 @@ detect_display_manager() {
 # ================================================================
 PACMAN_PKGS=(
   # Xorg
-  xorg xorg-xinit
+  xorg xorg-xinit xorg-xrdb
+  # D-Bus (necesario para dbus-launch en .xinitrc)
+  dbus
   # WM + compositor
   i3-gaps picom
   # Bar
@@ -343,16 +345,21 @@ setup_dotfiles() {
 
   if [[ -d "$REPO/config" ]]; then
     for item in "$REPO/config"/*/; do
+      # Eliminar trailing slash para que basename funcione bien
+      item="${item%/}"
       [[ -e "$item" ]] || continue
       local name
       name="$(basename "$item")"
 
       if [[ "$name" == "mozilla" ]]; then
+        # mozilla va a ~/.mozilla/ (fuera de .config)
         mkdir -p "$HOME/.mozilla"
-        cp -r "$item/." "$HOME/.mozilla/"
+        cp -rT "$item" "$HOME/.mozilla"
         ok "config/mozilla → ~/.mozilla/"
       else
-        cp -r "$item" "$HOME/.config/$name"
+        # El resto va a ~/.config/<nombre>
+        rm -rf "$HOME/.config/$name"
+        cp -rT "$item" "$HOME/.config/$name"
         ok "config/$name → ~/.config/$name"
       fi
     done
@@ -442,8 +449,42 @@ setup_services() {
     ok "lightdm habilitado"
   fi
 
-  echo "exec i3" > "$HOME/.xinitrc"
-  ok ".xinitrc → exec i3"
+  # .xinitrc correcto: dbus-launch necesario para que i3 funcione bien
+  # con apps GTK, notificaciones, portals, etc.
+  cat > "$HOME/.xinitrc" <<'XINITRC'
+#!/bin/sh
+
+# Merge Xresources si existe
+[ -f "$HOME/.Xresources" ] && xrdb -merge "$HOME/.Xresources"
+
+# Lanzar i3 con D-Bus session
+exec dbus-launch --exit-with-session i3
+XINITRC
+  chmod +x "$HOME/.xinitrc"
+  ok ".xinitrc → dbus-launch i3"
+
+  # .xsession para display managers (lxdm, lightdm, sddm…)
+  cp "$HOME/.xinitrc" "$HOME/.xsession"
+  chmod +x "$HOME/.xsession"
+  ok ".xsession → creado (para DM)"
+
+  # Entrada de escritorio para DMs que leen /usr/share/xsessions/
+  if [[ ! -f /usr/share/xsessions/i3.desktop ]]; then
+    sudo tee /usr/share/xsessions/i3.desktop >/dev/null <<'DESKTOP'
+[Desktop Entry]
+Name=i3
+Comment=Improved dynamic tiling window manager
+Exec=i3
+TryExec=i3
+Type=Application
+X-LightDM-DesktopName=i3
+DesktopNames=i3
+Keywords=tiling;wm;windowmanager;window;manager;
+DESKTOP
+    ok "i3.desktop → /usr/share/xsessions/"
+  else
+    info "i3.desktop ya existe"
+  fi
 
   sudo chsh -s /bin/zsh "$USER_NAME"
   ok "shell → zsh"
