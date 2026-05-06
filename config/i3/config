@@ -33,8 +33,9 @@ exec --no-startup-id ~/.config/i3/scripts/targetip
 exec --no-startup-id sh -c 'pgrep -f battery-check >/dev/null || ~/.config/i3/scripts/battery-check &'
 
 # ─── Volumen ───────────────────────────────────────────────────
-bindsym XF86AudioRaiseVolume exec --no-startup-id pactl set-sink-volume @DEFAULT_SINK@ +5% && notify-send " Vol +5%"
-bindsym XF86AudioLowerVolume exec --no-startup-id pactl set-sink-volume @DEFAULT_SINK@ -5% && notify-send " Vol -5%"
+bindsym XF86AudioRaiseVolume exec --no-startup-id wpctl set-volume @DEFAULT_AUDIO_SINK@ 5%+
+bindsym XF86AudioLowerVolume exec --no-startup-id wpctl set-volume @DEFAULT_AUDIO_SINK@ 5%-
+
 bindsym XF86AudioMute        exec --no-startup-id pactl set-sink-mute @DEFAULT_SINK@ toggle && notify-send " Mute"
 bindsym XF86AudioMicMute     exec --no-startup-id pactl set-source-mute @DEFAULT_SOURCE@ toggle && notify-send "🎤 Mic Toggle"
 
