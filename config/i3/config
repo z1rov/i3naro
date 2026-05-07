@@ -123,7 +123,7 @@ set $ws2 "2"
 set $ws3 "3"
 set $ws4 "4"
 set $ws5 "5"
-set $ws5 "6"
+set $ws6 "6"
 
 bindsym $mod+1 workspace number $ws1
 bindsym $mod+2 workspace number $ws2
